@@ -1,5 +1,9 @@
 # OTA/Travel Post-Trip Loyalty Voice Agent 📞
 
+Disclaimer: This project is a concept prototype built for exploration purposes only. 
+It does not use Expedia systems, APIs, data, or member information. 
+All loyalty values shown in demos are mocked.
+
 A demo-focused outbound voice assistant built with **LiveKit**, **Vobiz SIP trunking**, **Deepgram STT**, **Groq LLM**, and **Sarvam TTS**.
 
 This project is currently configured as a **post-trip loyalty assistant** that can:
