@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # =========================================================================================
-#  🤖 EXPEDIA POST-TRIP LOYALTY VOICE AGENT - CONFIGURATION
+#  🤖 OTA/TRAVEL POST-TRIP LOYALTY VOICE AGENT - CONFIGURATION
 # =========================================================================================
 
 SYSTEM_PROMPT = """
