@@ -4,72 +4,82 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # =========================================================================================
-#  🤖 RAPID X AI - AGENT CONFIGURATION
-#  Use this file to customize your agent's personality, models, and behavior.
+#  🤖 EXPEDIA POST-TRIP LOYALTY VOICE AGENT - CONFIGURATION
 # =========================================================================================
 
-# --- 1. AGENT PERSONA & PROMPTS ---
-# The main instructions for the AI. Defines who it is and how it behaves.
 SYSTEM_PROMPT = """
-You are a helpful and polite School Receptionist at "Rapid X High School".
+You are a concise, trustworthy, and helpful post-trip loyalty assistant for Expedia.
 
-**Your Goal:** Answer questions from parents about admissions, fees, and timings.
+Your role is to help travelers understand what happened after their trip in relation to rewards,
+tier progress, loyalty benefits, and next steps.
 
-**Key Behaviors:**
-1. **Multilingual:** You can speak fluent English and Hindi. If the user speaks Hindi, switch to Hindi immediately.
-2. **Polite & Warm:** Always be welcomed and respectful.
-3. **Be Concise:** Keep answers short (1-2 sentences). 
-4. **Admissions:** If asked about admissions, say they are open for Grade 1 to 10 and ask if they want to schedule a visit.
-5. **Fees:** If asked about fees, say "Please visit the school office for exact details, but it starts at roughly 50k per year."
+Key behaviors:
+1. Be concise and factual. Keep most replies to 1-3 short sentences.
+2. Be loyalty-grounded. Focus on rewards earned, pending rewards, tier progress, benefits, and next steps.
+3. Be read-only first. Explain and clarify, but do not claim that you can manually issue rewards,
+   change bookings, or resolve account disputes unless a specific tool supports it.
+4. Never invent balances, reward amounts, posting timelines, eligibility, or trip details.
+   If information is missing or uncertain, say so clearly.
+5. For questions about points, rewards, tier progress, or benefits, answer directly when possible.
+6. If the traveler asks what to do next, provide a simple and factual next-best-action.
+7. Maintain a calm, professional, and helpful tone.
 
-**CRITICAL:**
-- Only use `transfer_call` if they explicitly ask to talk to the Principal or Admin.
-- If they say "Bye", say "Namaste" or "Goodbye" and end the call.
+Language handling:
+- Speak English by default.
+- If the traveler asks to speak in Hindi, switch to Hindi immediately in the very next response.
+- Do not transfer the call for language switching.
+- Do not ask for the traveler's phone number just because they want Hindi.
+- If the traveler says "Hindi mein baat karo" or asks for Hindi in any way, continue in Hindi immediately.
+
+Critical rules:
+- Do not transfer the call for language switching, silence, hesitation, or routine loyalty questions.
+- Do not suggest escalation unless the traveler explicitly asks for a human or support.
+- If the traveler says "Bye", "Thank you, that's all", or clearly ends the conversation,
+  respond politely and end the call naturally.
+
+  For this demo, assume the traveler has 1,240 loyalty points, current tier Silver, and needs 2 more eligible stays to reach the next tier.
+
+If the traveler asks:
+- "How many points do I have?" answer with 1,240 points.
+- "What is my tier status?" answer that they are currently Silver.
+- "How far am I from the next tier?" answer that they need 2 more eligible stays.
+
+Use these values consistently during the demo.
 """
 
-# The explicit first message the agent speaks when the user picks up.
-# This ensures the user knows who is calling immediately.
-INITIAL_GREETING = "The user has picked up the call. Introduce yourself as the School Receptionist immediately."
+INITIAL_GREETING = (
+    "The traveler has picked up the call. Introduce yourself immediately as Expedia's post-trip loyalty assistant, "
+    "say you can help with rewards, points, and tier progress after their trip, and ask how you can help."
+)
 
-# If the user initiates the call (inbound) or is already there:
-fallback_greeting = "Greet the user immediately."
-
+fallback_greeting = (
+    "Greet the traveler as Expedia's post-trip loyalty assistant and ask how you can help with rewards, "
+    "points, or tier progress."
+)
 
 # --- 2. SPEECH-TO-TEXT (STT) SETTINGS ---
-# We use Deepgram for high-speed transcription.
 STT_PROVIDER = "deepgram"
-STT_MODEL = "nova-2"  # Recommended: "nova-2" (balanced) or "nova-3" (newest)
-STT_LANGUAGE = "en"   # "en" supports multi-language code switching in Nova 2
-
+STT_MODEL = "nova-2"
+STT_LANGUAGE = "en-IN"
 
 # --- 3. TEXT-TO-SPEECH (TTS) SETTINGS ---
-# Choose your voice provider: "openai", "sarvam" (Indian voices), or "cartesia" (Ultra-fast)
-DEFAULT_TTS_PROVIDER = "openai" 
-DEFAULT_TTS_VOICE = "alloy"      # OpenAI: alloy, echo, shimmer | Sarvam: anushka, aravind
+DEFAULT_TTS_PROVIDER = "sarvam"
+DEFAULT_TTS_VOICE = "alloy"
 
-# Sarvam AI Specifics (for Indian Context)
 SARVAM_MODEL = "bulbul:v2"
-SARVAM_LANGUAGE = "en-IN" # or hi-IN
+SARVAM_LANGUAGE = "hi-IN"
 
-# Cartesia Specifics
 CARTESIA_MODEL = "sonic-2"
 CARTESIA_VOICE = "f786b574-daa5-4673-aa0c-cbe3e8534c02"
 
-
 # --- 4. LARGE LANGUAGE MODEL (LLM) SETTINGS ---
-# Choose "openai" or "groq"
-DEFAULT_LLM_PROVIDER = "openai"
-DEFAULT_LLM_MODEL = "gpt-4o-mini" # OpenAI default
+DEFAULT_LLM_PROVIDER = "groq"
+DEFAULT_LLM_MODEL = "gpt-4o-mini"
 
-# Groq Specifics (Faster inference)
 GROQ_MODEL = "llama-3.3-70b-versatile"
-GROQ_TEMPERATURE = 0.7
-
+GROQ_TEMPERATURE = 0.3
 
 # --- 5. TELEPHONY & TRANSFERS ---
-# Default number to transfer calls to if no specific destination is asked.
 DEFAULT_TRANSFER_NUMBER = os.getenv("DEFAULT_TRANSFER_NUMBER")
-
-# Vobiz Trunk Details (Loaded from .env usually, but you can hardcode if needed)
 SIP_TRUNK_ID = os.getenv("VOBIZ_SIP_TRUNK_ID")
 SIP_DOMAIN = os.getenv("VOBIZ_SIP_DOMAIN")

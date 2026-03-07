@@ -1,4 +1,117 @@
-# LiveKit Vobiz Outbound Agent 📞
+# Expedia Post-Trip Loyalty Voice Agent 📞
+
+A demo-focused outbound voice assistant built with **LiveKit**, **Vobiz SIP trunking**, **Deepgram STT**, **Groq LLM**, and **Sarvam TTS**.
+
+This project is currently configured as a **post-trip loyalty assistant** that can:
+- place outbound calls
+- greet travelers after a trip
+- answer simple post-trip loyalty questions
+- switch to Hindi for demo scenarios
+- run as a controlled prototype for a broader **Loyalty Coach** vision
+
+---
+
+## What this project is
+
+This is **not yet a production loyalty backend integration**.
+
+It is currently a **voice runtime prototype** that demonstrates:
+
+- outbound calling with LiveKit + SIP
+- post-trip loyalty assistant behavior
+- bilingual experience direction (English + Hindi)
+- a foundation for future loyalty tools such as:
+  - points lookup
+  - tier status lookup
+  - post-trip reward explanation
+  - next-tier coaching
+
+At the moment, the most stable use case is a **scripted demo** using mock loyalty values.
+
+---
+
+## Current Demo Persona
+
+The assistant is configured as:
+
+**Expedia Post-Trip Loyalty Assistant**
+
+Behavior goals:
+- concise
+- factual
+- loyalty-grounded
+- read-only first
+- helpful and calm
+- switch to Hindi if asked
+- avoid unnecessary escalation
+
+Typical demo questions:
+- “Hindi mein baat karo”
+- “Mere points kitne hain?”
+- “Mera tier status kya hai?”
+- “Next tier ke liye aur kitna chahiye?”
+
+---
+
+## Current Tech Stack
+
+- **Telephony / RTC:** LiveKit
+- **SIP Provider:** Vobiz
+- **Speech-to-Text (STT):** Deepgram
+- **LLM:** Groq (`llama-3.3-70b-versatile`)
+- **Text-to-Speech (TTS):** Sarvam (`bulbul:v2`)
+- **Runtime:** Python
+
+---
+
+## Current Limitations
+
+This prototype is still evolving. Right now:
+
+### What works
+- LiveKit worker startup
+- outbound room/job dispatch
+- SIP trunk creation
+- outbound calling
+- initial greeting
+- Sarvam Hindi-capable voice output
+- controlled conversational demo flows
+
+### What is not fully implemented yet
+- real Expedia loyalty backend integration
+- real points lookup
+- real tier lookup
+- real trip/reward metadata injection
+- reliable free-form Hindi switching in every scenario
+- production-grade turn detection and conversation observability
+
+### Important note
+If you ask questions like:
+- “How many points do I have?”
+- “What is my tier status?”
+
+the assistant can only answer correctly if:
+1. you have added real loyalty tools, or
+2. you are using demo/mock values in the prompt.
+
+---
+
+## Project Structure
+
+```text
+.
+├── agent.py               # Main voice agent runtime
+├── config.py              # Persona, prompts, model config, telephony config
+├── make_call.py           # Dispatches outbound call jobs
+├── create_trunk.py        # Creates LiveKit outbound SIP trunk
+├── list_trunks.py         # Lists available LiveKit SIP trunks
+├── setup_trunk.py         # Helper script for SIP trunk setup
+├── docker-compose.yml
+├── Dockerfile
+├── requirements.txt
+├── .env.example
+├── .gitignore
+└── dashboard/             # Optional dashboard / UI pieces
 
 A production-ready voice agent capable of making outbound calls using **LiveKit**, **Deepgram**, and **Groq (Llama 3.3)**.  
 Designed for reliability, speed, and ease of deployment.
@@ -102,9 +215,4 @@ python make_call.py --to +91XXXXXXXXXX
 
 ---
 
-## 📂 Project Structure
-- `agent.py`: Main application logic.
-- `config.py`: Central configuration for prompts, models, and constants.
-- `make_call.py`: Script to initiate outbound calls.
-- `create_trunk.py` / `setup_trunk.py`: Utilities for SIP trunk management.
-# LIvekitAIVoice
+
