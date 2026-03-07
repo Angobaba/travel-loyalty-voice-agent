@@ -1,4 +1,4 @@
-# OTA/Travel Post-Trip Loyalty Voice Agent 📞
+# OTA/Travel Post-Trip Loyalty Voice AI Agent 📞
 
 Disclaimer: This project is a concept prototype built for exploration purposes only. 
 It does not use Expedia systems, APIs, data, or member information. 
