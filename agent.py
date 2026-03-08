@@ -1,24 +1,20 @@
 """
 Post-Trip Loyalty Voice Agent
-==============================
+=============================
 Main runtime for the outbound voice assistant.
 
 Architecture:
 - Connects to LiveKit rooms
 - Places outbound SIP calls via Vobiz
-- Uses Deepgram for STT, Groq/OpenAI for LLM, Sarvam for TTS
+- Uses Deepgram for STT, Groq/OpenAI for LLM, Sarvam/Deepgram/OpenAI/Cartesia for TTS
 - Retrieves loyalty data via tools (not hardcoded prompts)
 """
 
 import os
-import certifi
-
-# Fix for macOS SSL Certificate errors - MUST be before other imports
-os.environ["SSL_CERT_FILE"] = certifi.where()
-
-import logging
 import json
-from typing import Annotated
+import certifi
+import logging
+from typing import Annotated, Optional
 
 from dotenv import load_dotenv
 from livekit import agents, api
@@ -35,190 +31,187 @@ from livekit.plugins import (
 import config
 import loyalty_store
 
-# Load environment variables
+# -----------------------------------------------------------------------------
+# Environment + logging
+# -----------------------------------------------------------------------------
+
+# Fix for macOS SSL Certificate errors - MUST be before other imports that use SSL
+os.environ["SSL_CERT_FILE"] = certifi.where()
+
 load_dotenv(".env")
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("loyalty-agent")
 
 
-# =============================================================================
-# LOYALTY TOOLS (Callable by the LLM)
-# =============================================================================
+# -----------------------------------------------------------------------------
+# Loyalty tools callable by the LLM
+# -----------------------------------------------------------------------------
 
-class LoyaltyTools(llm.FunctionContext):
+class LoyaltyTools:
     """
-    Tools that let the LLM retrieve real loyalty data.
-    
-    The LLM calls these functions during conversation to get member-specific
-    information instead of relying on hardcoded values.
+    Tool container for retrieval-backed loyalty information.
+
+    Important:
+    - In livekit-agents 1.4.x, you do NOT inherit from llm.FunctionContext.
+    - Methods decorated with @llm.ai_callable can still be exposed through fnc_ctx.
     """
-    
-    def __init__(self, phone_number: str = None):
-        super().__init__()
-        # Store the phone number for member lookups
+
+    def __init__(self, phone_number: Optional[str] = None):
         self._phone_number = phone_number or "default"
-    
+
     @llm.ai_callable(
-        description="Get the member's profile including name, tier, and recent trip info"
+        description="Get the member's profile including name, tier, points, recent trip, and next review timing."
     )
     def get_member_profile(self) -> str:
-        """Retrieve member profile data."""
         logger.info(f"Tool called: get_member_profile for {self._phone_number}")
         data = loyalty_store.get_member_profile(self._phone_number)
-        
-        # Format for natural speech
+
         trip_info = data.get("last_trip", {})
         trip_text = ""
         if trip_info:
-            trip_text = f" Your last trip was to {trip_info.get('destination', 'a recent destination')}."
-        
+            destination = trip_info.get("destination", "a recent destination")
+            trip_text = f" Last trip destination: {destination}."
+
         return (
-            f"Member: {data['name']}. "
+            f"Member name: {data['name']}. "
             f"Current tier: {data['current_tier']}. "
             f"Points balance: {data['points_balance']}.{trip_text} "
             f"Tier review in {data['days_until_review']} days."
         )
-    
+
     @llm.ai_callable(
-        description="Get the member's current points balance and recent earnings"
+        description="Get the member's current points balance and points earned from the most recent trip."
     )
     def get_points_balance(self) -> str:
-        """Retrieve points balance."""
         logger.info(f"Tool called: get_points_balance for {self._phone_number}")
         data = loyalty_store.get_points_balance(self._phone_number)
-        
+
         return (
             f"Current balance: {data['points_balance']} points. "
-            f"Earned {data['last_trip_points']} points from {data['last_trip_destination']}."
+            f"Most recent trip earned {data['last_trip_points']} points from {data['last_trip_destination']}."
         )
-    
+
     @llm.ai_callable(
-        description="Get tier status and progress toward the next tier"
+        description="Get the member's current tier and progress to the next tier."
     )
     def get_tier_status(self) -> str:
-        """Retrieve tier status and progression info."""
         logger.info(f"Tool called: get_tier_status for {self._phone_number}")
         data = loyalty_store.get_tier_status(self._phone_number)
-        
-        if data["at_highest_tier"]:
+
+        if data.get("at_highest_tier"):
             return (
-                f"Current tier: {data['current_tier']} — the highest tier. "
+                f"Current tier: {data['current_tier']}, which is the highest tier. "
                 f"Points balance: {data['points_balance']}. "
                 f"Tier review in {data['months_until_review']} months."
             )
-        
+
         return (
             f"Current tier: {data['current_tier']}. "
-            f"Points: {data['points_balance']}. "
-            f"Need {data['points_to_next_tier']} more points to reach {data['next_tier']}. "
+            f"Points balance: {data['points_balance']}. "
+            f"You need {data['points_to_next_tier']} more points to reach {data['next_tier']}. "
             f"Tier review in {data['months_until_review']} months."
         )
-    
+
     @llm.ai_callable(
-        description="Get benefits for a specific tier (Blue, Silver, Gold, or Platinum)"
+        description="Get benefits for a specific tier: Blue, Silver, Gold, or Platinum."
     )
     def get_tier_benefits(
         self,
-        tier_name: Annotated[str, "The tier to look up: Blue, Silver, Gold, or Platinum"]
+        tier_name: Annotated[str, "Tier to look up: Blue, Silver, Gold, or Platinum"],
     ) -> str:
-        """Retrieve benefits for a specific tier."""
         logger.info(f"Tool called: get_tier_benefits for tier {tier_name}")
         data = loyalty_store.get_tier_benefits(tier_name)
-        
+
         if "error" in data:
-            return f"Sorry, I don't recognize that tier. Valid tiers are: Blue, Silver, Gold, and Platinum."
-        
-        benefits_list = data["benefits"]
-        # Keep it concise for voice
-        if len(benefits_list) > 3:
-            top_benefits = ", ".join(benefits_list[:3])
-            return f"{data['tier']} tier includes: {top_benefits}, and more."
-        
-        return f"{data['tier']} tier includes: {', '.join(benefits_list)}."
-    
+            return "I don't recognize that tier. Valid tiers are Blue, Silver, Gold, and Platinum."
+
+        benefits = data.get("benefits", [])
+        if not benefits:
+            return f"{data['tier']} tier currently has no listed benefits in the demo data."
+
+        if len(benefits) > 3:
+            return f"{data['tier']} tier includes: {', '.join(benefits[:3])}, and more."
+
+        return f"{data['tier']} tier includes: {', '.join(benefits)}."
+
     @llm.ai_callable(
-        description="Get info about tier maintenance and potential downgrade"
+        description="Explain downgrade risk, review timing, and the 12-month tier maintenance rule."
     )
     def get_downgrade_info(self) -> str:
-        """Retrieve tier maintenance and downgrade information."""
         logger.info(f"Tool called: get_downgrade_info for {self._phone_number}")
         data = loyalty_store.get_downgrade_info(self._phone_number)
-        
-        if not data["can_be_downgraded"]:
+
+        if not data.get("can_be_downgraded"):
             return (
-                f"You're at {data['current_tier']} tier. "
-                "This is the starting tier, so there's no risk of downgrade. "
-                "Keep earning to move up!"
+                f"You're currently in {data['current_tier']}. "
+                "This is the starting tier, so there's no downgrade risk from here. "
+                "Keep earning points to move up."
             )
-        
+
         return (
-            f"You're currently {data['current_tier']}. "
+            f"You're currently in {data['current_tier']}. "
             f"Your tier is reviewed every {data['maintenance_period_months']} months. "
-            f"Next review in about {data['months_until_review']} months. "
-            f"If activity drops significantly, you could move to {data['previous_tier']}. "
+            f"Your next review is in about {data['months_until_review']} months. "
+            f"If your activity falls short, you could move down to {data['previous_tier']}. "
             f"{data['advice']}"
         )
-    
+
     @llm.ai_callable(
-        description="Explain how the tier system works and what's needed to move up"
+        description="Explain the tier system, thresholds, and what is required to move up."
     )
     def get_tier_requirements(self) -> str:
-        """Retrieve tier progression requirements."""
         logger.info("Tool called: get_tier_requirements")
         data = loyalty_store.get_tier_requirements()
-        
-        tiers_summary = []
-        for tier in data["tiers"]:
-            if tier["next_tier"]:
-                tiers_summary.append(
+
+        tier_lines = []
+        for tier in data.get("tiers", []):
+            if tier.get("next_tier"):
+                tier_lines.append(
                     f"{tier['name']} needs {tier['points_to_next']} points to reach {tier['next_tier']}"
                 )
             else:
-                tiers_summary.append(f"{tier['name']} is the highest tier")
-        
-        return (
-            f"Tier progression: {'. '.join(tiers_summary)}. "
-            f"{data['maintenance_rule']}"
-        )
+                tier_lines.append(f"{tier['name']} is the highest tier")
+
+        return f"Tier progression works like this: {'; '.join(tier_lines)}. {data['maintenance_rule']}"
 
 
-# =============================================================================
-# TTS / LLM BUILDERS
-# =============================================================================
+# -----------------------------------------------------------------------------
+# Provider builders
+# -----------------------------------------------------------------------------
 
-def _build_tts(config_provider: str = None, config_voice: str = None):
+def _build_tts(config_provider: Optional[str] = None, config_voice: Optional[str] = None):
     """Configure Text-to-Speech provider."""
     provider = (config_provider or os.getenv("TTS_PROVIDER", config.DEFAULT_TTS_PROVIDER)).lower()
-    
-    # Auto-detect Sarvam voices
-    sarvam_voices = ["anushka", "aravind", "amartya", "dhruv"]
+
+    sarvam_voices = {"anushka", "aravind", "amartya", "dhruv"}
     if config_voice and config_voice.lower() in sarvam_voices:
         provider = "sarvam"
-    
+
     if provider == "cartesia":
         logger.info("TTS: Cartesia")
         return cartesia.TTS(
             model=os.getenv("CARTESIA_TTS_MODEL", config.CARTESIA_MODEL),
             voice=os.getenv("CARTESIA_TTS_VOICE", config.CARTESIA_VOICE),
         )
-    
+
     if provider == "sarvam":
         voice = config_voice or os.getenv("SARVAM_VOICE", config.DEFAULT_TTS_VOICE)
         language = os.getenv("SARVAM_LANGUAGE", config.SARVAM_LANGUAGE)
+        model = os.getenv("SARVAM_TTS_MODEL", config.SARVAM_MODEL)
         logger.info(f"TTS: Sarvam ({voice}, {language})")
         return sarvam.TTS(
-            model=os.getenv("SARVAM_TTS_MODEL", config.SARVAM_MODEL),
+            model=model,
             speaker=voice,
             target_language_code=language,
         )
-    
+
     if provider == "deepgram":
         logger.info("TTS: Deepgram")
-        return deepgram.TTS(model=os.getenv("DEEPGRAM_TTS_MODEL", config.DEEPGRAM_TTS_MODEL))
-    
-    # Default to OpenAI
+        return deepgram.TTS(
+            model=os.getenv("DEEPGRAM_TTS_MODEL", config.DEEPGRAM_TTS_MODEL)
+        )
+
     voice = config_voice or os.getenv("OPENAI_TTS_VOICE", "alloy")
     logger.info(f"TTS: OpenAI ({voice})")
     return openai.TTS(
@@ -227,10 +220,10 @@ def _build_tts(config_provider: str = None, config_voice: str = None):
     )
 
 
-def _build_llm(config_provider: str = None):
+def _build_llm(config_provider: Optional[str] = None):
     """Configure LLM provider."""
     provider = (config_provider or os.getenv("LLM_PROVIDER", config.DEFAULT_LLM_PROVIDER)).lower()
-    
+
     if provider == "groq":
         logger.info("LLM: Groq")
         return openai.LLM(
@@ -239,22 +232,20 @@ def _build_llm(config_provider: str = None):
             model=os.getenv("GROQ_MODEL", config.GROQ_MODEL),
             temperature=float(os.getenv("GROQ_TEMPERATURE", str(config.GROQ_TEMPERATURE))),
         )
-    
+
     logger.info("LLM: OpenAI")
     return openai.LLM(model=config.DEFAULT_LLM_MODEL)
 
 
-# =============================================================================
-# AGENT DEFINITION
-# =============================================================================
+# -----------------------------------------------------------------------------
+# Agent definition
+# -----------------------------------------------------------------------------
 
 class PostTripLoyaltyAgent(Agent):
     """
     Voice agent for post-trip loyalty assistance.
-    
-    Uses tools to retrieve actual member data instead of hardcoded values.
     """
-    
+
     def __init__(self, fnc_ctx: LoyaltyTools) -> None:
         super().__init__(
             instructions=config.SYSTEM_PROMPT,
@@ -262,61 +253,63 @@ class PostTripLoyaltyAgent(Agent):
         )
 
 
-# =============================================================================
-# ENTRYPOINT
-# =============================================================================
+# -----------------------------------------------------------------------------
+# Metadata helpers
+# -----------------------------------------------------------------------------
+
+def _safe_parse_json(value: Optional[str]) -> dict:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception as e:
+        logger.warning(f"Could not parse metadata JSON: {e}")
+        return {}
+
+
+def _find_existing_sip_participant(room) -> bool:
+    return any("sip_" in p.identity for p in room.remote_participants.values())
+
+
+# -----------------------------------------------------------------------------
+# Main entrypoint
+# -----------------------------------------------------------------------------
 
 async def entrypoint(ctx: agents.JobContext):
     """
     Main entrypoint for the voice agent.
-    
+
     Flow:
     1. Parse job/room metadata for phone number and config
-    2. Initialize STT, LLM, TTS
-    3. Create agent with loyalty tools bound to this member
-    4. Place outbound call if needed
-    5. Generate greeting
+    2. Initialize retrieval tools
+    3. Initialize STT, LLM, TTS
+    4. Start agent session
+    5. Place outbound call if needed
+    6. Generate greeting
     """
     logger.info(f"Starting agent for room: {ctx.room.name}")
-    
-    # Extract configuration from metadata
-    phone_number = None
+
+    job_metadata = _safe_parse_json(getattr(ctx.job, "metadata", None))
+    room_metadata = _safe_parse_json(getattr(ctx.room, "metadata", None))
+
     config_dict = {}
-    
-    # Try job metadata first
-    try:
-        if ctx.job.metadata:
-            data = json.loads(ctx.job.metadata)
-            phone_number = data.get("phone_number")
-            config_dict = data
-            logger.info(f"Job metadata: phone={phone_number}")
-    except Exception as e:
-        logger.warning(f"Could not parse job metadata: {e}")
-    
-    # Room metadata can override
-    try:
-        if ctx.room.metadata:
-            data = json.loads(ctx.room.metadata)
-            if data.get("phone_number"):
-                phone_number = data.get("phone_number")
-            config_dict.update(data)
-            logger.info(f"Room metadata applied: phone={phone_number}")
-    except Exception as e:
-        logger.warning(f"Could not parse room metadata: {e}")
-    
-    # Create loyalty tools bound to this member's phone number
+    config_dict.update(job_metadata)
+    config_dict.update(room_metadata)
+
+    phone_number = room_metadata.get("phone_number") or job_metadata.get("phone_number")
+    logger.info(f"Resolved phone number: {phone_number or 'not provided'}")
+
     loyalty_tools = LoyaltyTools(phone_number=phone_number)
-    logger.info(f"Loyalty tools initialized for: {phone_number or 'default member'}")
-    
-    # Build the agent session
+    logger.info(f"Loyalty tools initialized for {phone_number or 'default member'}")
+
     session = AgentSession(
         vad=silero.VAD.load(),
         stt=deepgram.STT(model=config.STT_MODEL, language=config.STT_LANGUAGE),
         llm=_build_llm(config_dict.get("model_provider")),
         tts=_build_tts(config_dict.get("model_provider"), config_dict.get("voice_id")),
     )
-    
-    # Start the session with tools enabled
+
     await session.start(
         room=ctx.room,
         agent=PostTripLoyaltyAgent(fnc_ctx=loyalty_tools),
@@ -326,23 +319,17 @@ async def entrypoint(ctx: agents.JobContext):
         ),
     )
     logger.info("Agent session started with loyalty tools")
-    
-    # Determine if we need to dial out
+
     should_dial = False
     if phone_number:
-        # Check if user is already in the room (dashboard-dispatched)
-        user_in_room = any(
-            "sip_" in p.identity 
-            for p in ctx.room.remote_participants.values()
-        )
-        should_dial = not user_in_room
-        
+        user_already_in_room = _find_existing_sip_participant(ctx.room)
+        should_dial = not user_already_in_room
+
         if should_dial:
             logger.info("User not in room — initiating dial-out")
         else:
-            logger.info("User already in room — skipping dial-out")
-    
-    # Place outbound call if needed
+            logger.info("User already present in room — skipping dial-out")
+
     if should_dial:
         logger.info(f"Dialing {phone_number}...")
         try:
@@ -355,21 +342,20 @@ async def entrypoint(ctx: agents.JobContext):
                     wait_until_answered=True,
                 )
             )
-            logger.info("Call answered — generating greeting")
+            logger.info("Call answered — generating initial greeting")
             await session.generate_reply(instructions=config.INITIAL_GREETING)
-            
+
         except Exception as e:
             logger.error(f"Dial-out failed: {e}")
             ctx.shutdown()
     else:
-        # Dashboard or test scenario — just greet
         logger.info("Generating fallback greeting")
         await session.generate_reply(instructions=config.FALLBACK_GREETING)
 
 
-# =============================================================================
-# CLI ENTRYPOINT
-# =============================================================================
+# -----------------------------------------------------------------------------
+# CLI entrypoint
+# -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
     agents.cli.run_app(
