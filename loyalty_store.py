@@ -127,6 +127,85 @@ MOCK_MEMBERS = {
             "status": "completed",
         },
     },
+    # --- NEW PERSONAS ---
+    "+911111111111": {
+        "member_id": "EXP-004",
+        "name": "Quam",
+        "current_tier": "Platinum",
+        "points_balance": 67,
+        "tier_achieved_date": datetime.now() - timedelta(days=90),
+        "last_trip": {
+            "destination": "Maldives",
+            "checkout_date": datetime.now() - timedelta(days=2),
+            "points_earned": 22,
+            "status": "completed",
+        },
+    },
+    "+912222222222": {
+        "member_id": "EXP-005",
+        "name": "Shravni",
+        "current_tier": "Gold",
+        "points_balance": 38,
+        "tier_achieved_date": datetime.now() - timedelta(days=120),
+        "last_trip": {
+            "destination": "Udaipur",
+            "checkout_date": datetime.now() - timedelta(days=5),
+            "points_earned": 9,
+            "status": "completed",
+        },
+    },
+    "+913333333333": {
+        "member_id": "EXP-006",
+        "name": "Tsahy",
+        "current_tier": "Silver",
+        "points_balance": 22,
+        "tier_achieved_date": datetime.now() - timedelta(days=60),
+        "last_trip": {
+            "destination": "Bangkok",
+            "checkout_date": datetime.now() - timedelta(days=4),
+            "points_earned": 11,
+            "status": "completed",
+        },
+    },
+    "+914444444444": {
+        "member_id": "EXP-007",
+        "name": "Ankit",
+        "current_tier": "Platinum",
+        "points_balance": 52,
+        "tier_achieved_date": datetime.now() - timedelta(days=180),
+        "last_trip": {
+            "destination": "Paris",
+            "checkout_date": datetime.now() - timedelta(days=1),
+            "points_earned": 18,
+            "status": "completed",
+        },
+    },
+    "+915555555555": {
+        "member_id": "EXP-008",
+        "name": "Sourabh",
+        "current_tier": "Blue",
+        "points_balance": 7,
+        "tier_achieved_date": datetime.now() - timedelta(days=15),
+        "last_trip": {
+            "destination": "Bangalore",
+            "checkout_date": datetime.now() - timedelta(days=10),
+            "points_earned": 7,
+            "status": "completed",
+        },
+    },
+    "+916666666666": {
+        "member_id": "EXP-009",
+        "name": "Varun",
+        "current_tier": "Gold",
+        "points_balance": 41,
+        "tier_achieved_date": datetime.now() - timedelta(days=75),
+        "last_trip": {
+            "destination": "Dubai",
+            "checkout_date": datetime.now() - timedelta(days=3),
+            "points_earned": 15,
+            "status": "completed",
+        },
+    },
     # Default demo member (used when phone number not found)
     "default": {
         "member_id": "EXP-DEMO",
@@ -142,6 +221,67 @@ MOCK_MEMBERS = {
         },
     },
 }
+
+
+# =============================================================================
+# NAME-BASED LOOKUP (For demo/testing when using a single phone)
+# =============================================================================
+
+# Index members by name for demo lookups
+MEMBERS_BY_NAME = {
+    # Original members
+    "rahul": "+919876543210",
+    "rahul sharma": "+919876543210",
+    "priya": "+919123456789",
+    "priya patel": "+919123456789",
+    "amit": "+911234567890",
+    "amit kumar": "+911234567890",
+    # New personas
+    "quam": "+911111111111",
+    "shravni": "+912222222222",
+    "tsahy": "+913333333333",
+    "ankit": "+914444444444",
+    "sourabh": "+915555555555",
+    "varun": "+916666666666",
+}
+
+
+def lookup_member_by_name(name: str) -> dict:
+    """
+    Look up a member by name (for demo/testing scenarios).
+    
+    This allows testers to say "I'm Amit Kumar" and get that member's data,
+    even when calling from a different phone number.
+    
+    Returns the member's phone number and profile if found.
+    """
+    name_lower = name.lower().strip()
+    
+    # Try exact match first
+    if name_lower in MEMBERS_BY_NAME:
+        phone = MEMBERS_BY_NAME[name_lower]
+        profile = get_member_profile(phone)
+        return {
+            "found": True,
+            "phone_number": phone,
+            "profile": profile,
+        }
+    
+    # Try partial match (first name)
+    for stored_name, phone in MEMBERS_BY_NAME.items():
+        if name_lower in stored_name or stored_name in name_lower:
+            profile = get_member_profile(phone)
+            return {
+                "found": True,
+                "phone_number": phone,
+                "profile": profile,
+            }
+    
+    return {
+        "found": False,
+        "available_members": ["Rahul Sharma", "Priya Patel", "Amit Kumar", "Quam", "Shravni", "Tsahy", "Ankit", "Sourabh", "Varun"],
+        "message": "Member not found. For this demo, try one of the available test members.",
+    }
 
 
 # =============================================================================
