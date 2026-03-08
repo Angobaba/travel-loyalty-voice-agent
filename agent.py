@@ -48,19 +48,20 @@ logger = logging.getLogger("loyalty-agent")
 # Loyalty tools callable by the LLM
 # -----------------------------------------------------------------------------
 
-class LoyaltyTools:
+class LoyaltyTools(llm.ToolContext):
     """
     Tool container for retrieval-backed loyalty information.
 
-    Important:
-    - In livekit-agents 1.4.x, you do NOT inherit from llm.FunctionContext.
-    - Methods decorated with @llm.ai_callable can still be exposed through fnc_ctx.
+    For livekit-agents 1.4.x:
+    - inherit from llm.ToolContext
+    - use @llm.function_tool
     """
 
     def __init__(self, phone_number: Optional[str] = None):
+        super().__init__(tools=[])
         self._phone_number = phone_number or "default"
 
-    @llm.ai_callable(
+    @llm.function_tool(
         description="Get the member's profile including name, tier, points, recent trip, and next review timing."
     )
     def get_member_profile(self) -> str:
@@ -80,7 +81,7 @@ class LoyaltyTools:
             f"Tier review in {data['days_until_review']} days."
         )
 
-    @llm.ai_callable(
+    @llm.function_tool(
         description="Get the member's current points balance and points earned from the most recent trip."
     )
     def get_points_balance(self) -> str:
@@ -92,7 +93,7 @@ class LoyaltyTools:
             f"Most recent trip earned {data['last_trip_points']} points from {data['last_trip_destination']}."
         )
 
-    @llm.ai_callable(
+    @llm.function_tool(
         description="Get the member's current tier and progress to the next tier."
     )
     def get_tier_status(self) -> str:
@@ -113,7 +114,7 @@ class LoyaltyTools:
             f"Tier review in {data['months_until_review']} months."
         )
 
-    @llm.ai_callable(
+    @llm.function_tool(
         description="Get benefits for a specific tier: Blue, Silver, Gold, or Platinum."
     )
     def get_tier_benefits(
@@ -135,8 +136,8 @@ class LoyaltyTools:
 
         return f"{data['tier']} tier includes: {', '.join(benefits)}."
 
-    @llm.ai_callable(
-        description="Explain downgrade risk, review timing, and the 12-month tier maintenance rule."
+    @llm.function_tool(
+        description="Get downgrade risk, review timing, and the 12-month tier maintenance rule."
     )
     def get_downgrade_info(self) -> str:
         logger.info(f"Tool called: get_downgrade_info for {self._phone_number}")
@@ -157,7 +158,7 @@ class LoyaltyTools:
             f"{data['advice']}"
         )
 
-    @llm.ai_callable(
+    @llm.function_tool(
         description="Explain the tier system, thresholds, and what is required to move up."
     )
     def get_tier_requirements(self) -> str:
@@ -249,7 +250,7 @@ class PostTripLoyaltyAgent(Agent):
     def __init__(self, fnc_ctx: LoyaltyTools) -> None:
         super().__init__(
             instructions=config.SYSTEM_PROMPT,
-            fnc_ctx=fnc_ctx,
+            tools=list(fnc_ctx.function_tools.values()),
         )
 
 
