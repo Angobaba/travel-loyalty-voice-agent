@@ -6,7 +6,7 @@ Main runtime for the outbound voice assistant.
 Architecture:
 - Connects to LiveKit rooms
 - Places outbound SIP calls via Vobiz
-- Uses Deepgram for STT, Groq/OpenAI for LLM, Sarvam/Deepgram/OpenAI/Cartesia for TTS
+- Uses OpenAI Whisper for STT, OpenAI/Groq for LLM, and OpenAI/Sarvam/Deepgram/Cartesia for TTS
 - Retrieves loyalty data via tools (not hardcoded prompts)
 """
 
@@ -50,15 +50,36 @@ logger = logging.getLogger("loyalty-agent")
 class LoyaltyTools(llm.ToolContext):
     """
     Tool container for retrieval-backed loyalty information.
-
-    For livekit-agents 1.4.x:
-    - inherit from llm.ToolContext
-    - use @llm.function_tool
     """
 
     def __init__(self, phone_number: Optional[str] = None):
         super().__init__(tools=[])
         self._phone_number = phone_number or "default"
+        self._resolved_phone_number = phone_number or "default"
+
+    def _active_phone(self) -> str:
+        return self._resolved_phone_number or self._phone_number or "default"
+
+    @llm.function_tool(
+        description="Look up a member by spoken name for demo scenarios and switch the conversation to that member."
+    )
+    async def lookup_member_by_name(
+        self,
+        name: Annotated[str, "The member's name as spoken by the caller"],
+    ) -> str:
+        logger.info(f"Tool called: lookup_member_by_name for name {name}")
+        result = loyalty_store.lookup_member_by_name(name)
+
+        if not result.get("found"):
+            members = ", ".join(result.get("available_members", []))
+            return f"I couldn't find that member in the demo data. Available test members are: {members}."
+
+        self._resolved_phone_number = result["phone_number"]
+        return (
+            f"I found {result['name']}. "
+            f"They are currently in {result['current_tier']} tier with {result['points_balance']} points. "
+            f"I'll use this account for the rest of the conversation."
+        )
 
     @llm.function_tool(
         description="Get the member's profile including name, tier, points, recent trip, and next review timing."
@@ -67,8 +88,9 @@ class LoyaltyTools(llm.ToolContext):
         self,
         request: Annotated[str, "Leave empty"] = "",
     ) -> str:
-        logger.info(f"Tool called: get_member_profile for {self._phone_number}")
-        data = loyalty_store.get_member_profile(self._phone_number)
+        phone = self._active_phone()
+        logger.info(f"Tool called: get_member_profile for {phone}")
+        data = loyalty_store.get_member_profile(phone)
 
         trip_info = data.get("last_trip", {})
         trip_text = ""
@@ -90,8 +112,9 @@ class LoyaltyTools(llm.ToolContext):
         self,
         request: Annotated[str, "Leave empty"] = "",
     ) -> str:
-        logger.info(f"Tool called: get_points_balance for {self._phone_number}")
-        data = loyalty_store.get_points_balance(self._phone_number)
+        phone = self._active_phone()
+        logger.info(f"Tool called: get_points_balance for {phone}")
+        data = loyalty_store.get_points_balance(phone)
 
         return (
             f"Current balance: {data['points_balance']} points. "
@@ -105,8 +128,9 @@ class LoyaltyTools(llm.ToolContext):
         self,
         request: Annotated[str, "Leave empty"] = "",
     ) -> str:
-        logger.info(f"Tool called: get_tier_status for {self._phone_number}")
-        data = loyalty_store.get_tier_status(self._phone_number)
+        phone = self._active_phone()
+        logger.info(f"Tool called: get_tier_status for {phone}")
+        data = loyalty_store.get_tier_status(phone)
 
         if data.get("at_highest_tier"):
             return (
@@ -151,8 +175,9 @@ class LoyaltyTools(llm.ToolContext):
         self,
         request: Annotated[str, "Leave empty"] = "",
     ) -> str:
-        logger.info(f"Tool called: get_downgrade_info for {self._phone_number}")
-        data = loyalty_store.get_downgrade_info(self._phone_number)
+        phone = self._active_phone()
+        logger.info(f"Tool called: get_downgrade_info for {phone}")
+        data = loyalty_store.get_downgrade_info(phone)
 
         if not data.get("can_be_downgraded"):
             return (
@@ -195,12 +220,15 @@ class LoyaltyTools(llm.ToolContext):
 # Provider builders
 # -----------------------------------------------------------------------------
 
-def _build_tts(config_provider: Optional[str] = None, config_voice: Optional[str] = None):
+def _build_tts(
+    config_provider: Optional[str] = None,
+    config_voice: Optional[str] = None,
+    response_language: Optional[str] = None,
+):
     """Configure Text-to-Speech provider."""
     provider = (config_provider or os.getenv("TTS_PROVIDER", config.DEFAULT_TTS_PROVIDER)).lower()
 
-    sarvam_voices = {"anushka", "aravind", "amartya", "dhruv"}
-    if config_voice and config_voice.lower() in sarvam_voices:
+    if response_language and response_language.lower().startswith("hi"):
         provider = "sarvam"
 
     if provider == "cartesia":
@@ -211,8 +239,8 @@ def _build_tts(config_provider: Optional[str] = None, config_voice: Optional[str
         )
 
     if provider == "sarvam":
-        voice = config_voice or os.getenv("SARVAM_VOICE", config.DEFAULT_TTS_VOICE)
-        language = os.getenv("SARVAM_LANGUAGE", config.SARVAM_LANGUAGE)
+        voice = os.getenv("SARVAM_VOICE", config.SARVAM_VOICE)
+        language = config.SARVAM_LANGUAGE
         model = os.getenv("SARVAM_TTS_MODEL", config.SARVAM_MODEL)
         logger.info(f"TTS: Sarvam ({voice}, {language})")
         return sarvam.TTS(
@@ -227,7 +255,7 @@ def _build_tts(config_provider: Optional[str] = None, config_voice: Optional[str
             model=os.getenv("DEEPGRAM_TTS_MODEL", config.DEEPGRAM_TTS_MODEL)
         )
 
-    voice = config_voice or os.getenv("OPENAI_TTS_VOICE", "alloy")
+    voice = config_voice or os.getenv("OPENAI_TTS_VOICE", config.DEFAULT_TTS_VOICE)
     logger.info(f"TTS: OpenAI ({voice})")
     return openai.TTS(
         model=os.getenv("OPENAI_TTS_MODEL", "tts-1"),
@@ -249,7 +277,10 @@ def _build_llm(config_provider: Optional[str] = None):
         )
 
     logger.info("LLM: OpenAI")
-    return openai.LLM(model=config.DEFAULT_LLM_MODEL)
+    return openai.LLM(
+        api_key=os.getenv("OPENAI_API_KEY"),
+        model=os.getenv("OPENAI_MODEL", config.DEFAULT_LLM_MODEL),
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -292,17 +323,6 @@ def _find_existing_sip_participant(room) -> bool:
 # -----------------------------------------------------------------------------
 
 async def entrypoint(ctx: agents.JobContext):
-    """
-    Main entrypoint for the voice agent.
-
-    Flow:
-    1. Parse job/room metadata for phone number and config
-    2. Initialize retrieval tools
-    3. Initialize STT, LLM, TTS
-    4. Start agent session
-    5. Place outbound call if needed
-    6. Generate greeting
-    """
     logger.info(f"Starting agent for room: {ctx.room.name}")
 
     job_metadata = _safe_parse_json(getattr(ctx.job, "metadata", None))
@@ -318,11 +338,19 @@ async def entrypoint(ctx: agents.JobContext):
     loyalty_tools = LoyaltyTools(phone_number=phone_number)
     logger.info(f"Loyalty tools initialized for {phone_number or 'default member'}")
 
+    logger.info("STT: OpenAI Whisper")
     session = AgentSession(
         vad=silero.VAD.load(),
-        stt=deepgram.STT(model=config.STT_MODEL, language=config.STT_LANGUAGE),
+        stt=openai.STT(
+            model=config.STT_MODEL,
+            language=config.STT_LANGUAGE,
+        ),
         llm=_build_llm(config_dict.get("model_provider")),
-        tts=_build_tts(config_dict.get("model_provider"), config_dict.get("voice_id")),
+        tts=_build_tts(
+            config_provider=None,
+            config_voice=config_dict.get("voice_id"),
+            response_language=config.DEFAULT_RESPONSE_LANGUAGE,
+        ),
     )
 
     await session.start(

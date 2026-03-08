@@ -31,6 +31,8 @@ Your personality:
 How you work:
 - Use the available tools to look up the member's actual data — never guess or make up numbers
 - If a lookup fails or data is missing, say so honestly: "I'm not seeing that information right now"
+- If the caller tells you their name and asks to check their account, use the name lookup tool
+- After identifying a member by name, use that member's data for future answers
 - Explain things simply, avoiding jargon
 - When sharing points or tier info, be specific and direct
 
@@ -40,6 +42,7 @@ Things you can help with:
 - Progress toward the next tier
 - Tier benefits and perks
 - Tier maintenance and renewal timelines
+- Identifying the member by phone number or by spoken name in demo mode
 
 Things you don't do:
 - You can't change bookings or issue refunds
@@ -48,7 +51,7 @@ Things you don't do:
 
 Language:
 - Speak English by default
-- If they ask for Hindi, switch immediately — no questions asked
+- If they ask for Hindi, switch immediately
 - "Hindi mein baat karo" or any Hindi request means: respond in Hindi from that point on
 
 Ending calls:
@@ -62,12 +65,10 @@ Ending calls:
 # GREETING INSTRUCTIONS
 # =============================================================================
 
-# These are instructions TO the LLM about how to greet — they guide tone and content.
-
 INITIAL_GREETING = """Greet the member warmly. You're calling to check in after their recent trip.
 
 Say something like:
-"Hi, this is [your name] from the loyalty team. I'm just checking in after your recent trip — wanted to make sure your points came through and see if you have any questions about your rewards."
+"Hi, this is your loyalty assistant from the rewards team. I'm just checking in after your recent trip and wanted to make sure your points came through. I can also help with your rewards or tier status."
 
 Keep it natural and brief. Ask how you can help."""
 
@@ -81,14 +82,14 @@ Keep it short and inviting."""
 
 
 # =============================================================================
-# VOICE & TONE GUIDELINES (for reference)
+# VOICE & TONE GUIDELINES
 # =============================================================================
 
 VOICE_GUIDELINES = """
 DO say:
-- "You've got 18 points right now"
-- "You're 7 points away from Gold"
-- "Your Silver status renews in about 8 months"
+- "You've got [points balance] points right now"
+- "You're [points needed] points away from [next tier]"
+- "Your [current tier] status renews in about [review timing]"
 - "Great question — let me check that for you"
 
 DON'T say:
@@ -99,7 +100,7 @@ DON'T say:
 
 Keep responses phone-friendly:
 - Assume they can't see anything — describe clearly
-- Numbers should be spoken naturally ("eighteen points" not "18 pts")
+- Numbers should be spoken naturally
 - Avoid long lists — summarize, then offer to detail
 """
 
@@ -108,27 +109,27 @@ Keep responses phone-friendly:
 # SPEECH-TO-TEXT (STT) SETTINGS
 # =============================================================================
 
-STT_PROVIDER = "deepgram"
-STT_MODEL = "nova-2"
-STT_LANGUAGE = "en-IN"  # Supports Indian English accents
+STT_PROVIDER = "openai"
+STT_MODEL = "whisper-1"
+STT_LANGUAGE = "en"
 
 
 # =============================================================================
 # TEXT-TO-SPEECH (TTS) SETTINGS
 # =============================================================================
 
-DEFAULT_TTS_PROVIDER = "sarvam"
-DEFAULT_TTS_VOICE = "anushka"  # Sarvam's natural Hindi-capable voice
+# Default voice output is OpenAI for English
+DEFAULT_TTS_PROVIDER = "openai"
+DEFAULT_TTS_VOICE = "alloy"
 
-# Sarvam (recommended for Hindi + English)
+# Hindi fallback via Sarvam
 SARVAM_MODEL = "bulbul:v2"
 SARVAM_LANGUAGE = "hi-IN"
+SARVAM_VOICE = "anushka"
 
-# Cartesia (alternative)
+# Optional alternative providers
 CARTESIA_MODEL = "sonic-2"
 CARTESIA_VOICE = "f786b574-daa5-4673-aa0c-cbe3e8534c02"
-
-# Deepgram (English-only fallback)
 DEEPGRAM_TTS_MODEL = "aura-asteria-en"
 
 
@@ -136,12 +137,12 @@ DEEPGRAM_TTS_MODEL = "aura-asteria-en"
 # LARGE LANGUAGE MODEL (LLM) SETTINGS
 # =============================================================================
 
-DEFAULT_LLM_PROVIDER = "groq"
-DEFAULT_LLM_MODEL = "gpt-4o-mini"  # Fallback for OpenAI
+DEFAULT_LLM_PROVIDER = "openai"
+DEFAULT_LLM_MODEL = "gpt-4o-mini"
 
-# Groq (primary — fast inference)
+# Optional Groq alternate config
 GROQ_MODEL = "llama-3.3-70b-versatile"
-GROQ_TEMPERATURE = 0.4  # Slightly higher for more natural speech
+GROQ_TEMPERATURE = 0.4
 
 
 # =============================================================================
@@ -157,9 +158,22 @@ SIP_DOMAIN = os.getenv("VOBIZ_SIP_DOMAIN")
 # TOOL-RELATED PROMPTS
 # =============================================================================
 
-TOOL_USE_GUIDANCE = """When answering questions about points, tiers, or benefits:
+TOOL_USE_GUIDANCE = """When answering questions about points, tiers, benefits, or member identity:
 1. Call the appropriate tool to get real data
 2. Share the information naturally in conversation
-3. If the tool returns an error, acknowledge it: "I'm having trouble pulling that up"
+3. If the tool returns an error, acknowledge it honestly
 
 Never invent numbers. Always check first."""
+
+
+# =============================================================================
+# LANGUAGE / TTS ROUTING HELPERS
+# =============================================================================
+
+DEFAULT_RESPONSE_LANGUAGE = "en"
+HINDI_RESPONSE_LANGUAGE = "hi"
+
+SUPPORTED_TTS_ROUTING = {
+    "en": "openai",
+    "hi": "sarvam",
+}

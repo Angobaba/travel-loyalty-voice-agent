@@ -77,7 +77,6 @@ TIER_CONFIG = {
     },
 }
 
-# Tier maintenance: must maintain for 12 months or face downgrade
 TIER_MAINTENANCE_MONTHS = 12
 
 
@@ -85,8 +84,6 @@ TIER_MAINTENANCE_MONTHS = 12
 # MOCK MEMBER DATABASE
 # =============================================================================
 
-# Simulates member profiles. In production, this would be an API call.
-# Key = phone number (used for lookup during calls)
 MOCK_MEMBERS = {
     "+919876543210": {
         "member_id": "EXP-001",
@@ -127,7 +124,6 @@ MOCK_MEMBERS = {
             "status": "completed",
         },
     },
-    # --- NEW PERSONAS ---
     "+911111111111": {
         "member_id": "EXP-004",
         "name": "Quam",
@@ -206,7 +202,6 @@ MOCK_MEMBERS = {
             "status": "completed",
         },
     },
-    # Default demo member (used when phone number not found)
     "default": {
         "member_id": "EXP-DEMO",
         "name": "Valued Member",
@@ -224,19 +219,16 @@ MOCK_MEMBERS = {
 
 
 # =============================================================================
-# NAME-BASED LOOKUP (For demo/testing when using a single phone)
+# NAME-BASED LOOKUP
 # =============================================================================
 
-# Index members by name for demo lookups
 MEMBERS_BY_NAME = {
-    # Original members
     "rahul": "+919876543210",
     "rahul sharma": "+919876543210",
     "priya": "+919123456789",
     "priya patel": "+919123456789",
     "amit": "+911234567890",
     "amit kumar": "+911234567890",
-    # New personas
     "quam": "+911111111111",
     "shravni": "+912222222222",
     "tsahy": "+913333333333",
@@ -246,70 +238,68 @@ MEMBERS_BY_NAME = {
 }
 
 
+def _get_member(phone_number: Optional[str]) -> dict:
+    return MOCK_MEMBERS.get(phone_number or "default", MOCK_MEMBERS["default"])
+
+
 def lookup_member_by_name(name: str) -> dict:
     """
-    Look up a member by name (for demo/testing scenarios).
-    
-    This allows testers to say "I'm Amit Kumar" and get that member's data,
-    even when calling from a different phone number.
-    
-    Returns the member's phone number and profile if found.
+    Look up a member by name for demo/testing scenarios.
     """
     name_lower = name.lower().strip()
-    
-    # Try exact match first
+
     if name_lower in MEMBERS_BY_NAME:
         phone = MEMBERS_BY_NAME[name_lower]
-        profile = get_member_profile(phone)
+        member = _get_member(phone)
         return {
             "found": True,
             "phone_number": phone,
-            "profile": profile,
+            "member_id": member["member_id"],
+            "name": member["name"],
+            "current_tier": member["current_tier"],
+            "points_balance": member["points_balance"],
         }
-    
-    # Try partial match (first name)
+
     for stored_name, phone in MEMBERS_BY_NAME.items():
         if name_lower in stored_name or stored_name in name_lower:
-            profile = get_member_profile(phone)
+            member = _get_member(phone)
             return {
                 "found": True,
                 "phone_number": phone,
-                "profile": profile,
+                "member_id": member["member_id"],
+                "name": member["name"],
+                "current_tier": member["current_tier"],
+                "points_balance": member["points_balance"],
             }
-    
+
     return {
         "found": False,
-        "available_members": ["Rahul Sharma", "Priya Patel", "Amit Kumar", "Quam", "Shravni", "Tsahy", "Ankit", "Sourabh", "Varun"],
+        "available_members": [
+            "Rahul Sharma",
+            "Priya Patel",
+            "Amit Kumar",
+            "Quam",
+            "Shravni",
+            "Tsahy",
+            "Ankit",
+            "Sourabh",
+            "Varun",
+        ],
         "message": "Member not found. For this demo, try one of the available test members.",
     }
 
 
 # =============================================================================
-# RETRIEVAL FUNCTIONS (These become agent tools)
+# RETRIEVAL FUNCTIONS
 # =============================================================================
 
-
 def get_member_profile(phone_number: str) -> dict:
-    """
-    Retrieve member profile by phone number.
-    
-    Returns member data including:
-    - Name
-    - Current tier
-    - Points balance
-    - Tier achieved date
-    - Last trip info
-    
-    If member not found, returns default demo profile.
-    """
-    member = MOCK_MEMBERS.get(phone_number, MOCK_MEMBERS["default"])
-    tier_config = TIER_CONFIG[member["current_tier"]]
-    
-    # Calculate days until tier review
+    member = _get_member(phone_number)
+
     tier_achieved = member["tier_achieved_date"]
     maintenance_deadline = tier_achieved + timedelta(days=TIER_MAINTENANCE_MONTHS * 30)
     days_until_review = (maintenance_deadline - datetime.now()).days
-    
+
     return {
         "member_id": member["member_id"],
         "name": member["name"],
@@ -321,15 +311,8 @@ def get_member_profile(phone_number: str) -> dict:
 
 
 def get_points_balance(phone_number: str) -> dict:
-    """
-    Get current points balance for a member.
-    
-    Returns:
-    - Current points
-    - Points earned from last trip
-    """
-    member = MOCK_MEMBERS.get(phone_number, MOCK_MEMBERS["default"])
-    
+    member = _get_member(phone_number)
+
     return {
         "points_balance": member["points_balance"],
         "last_trip_points": member.get("last_trip", {}).get("points_earned", 0),
@@ -338,34 +321,22 @@ def get_points_balance(phone_number: str) -> dict:
 
 
 def get_tier_status(phone_number: str) -> dict:
-    """
-    Get tier status and progression info for a member.
-    
-    Returns:
-    - Current tier
-    - Points needed for next tier
-    - Current points
-    - Next tier name (if applicable)
-    - Days until tier review
-    """
-    member = MOCK_MEMBERS.get(phone_number, MOCK_MEMBERS["default"])
+    member = _get_member(phone_number)
     current_tier = member["current_tier"]
     tier_config = TIER_CONFIG[current_tier]
-    
-    # Calculate points to next tier
+
     if tier_config["next_tier"]:
         next_tier_config = TIER_CONFIG[tier_config["next_tier"]]
         points_needed = next_tier_config["min_points"] - member["points_balance"]
         points_needed = max(0, points_needed)
     else:
         points_needed = None
-    
-    # Calculate tier review timeline
+
     tier_achieved = member["tier_achieved_date"]
     maintenance_deadline = tier_achieved + timedelta(days=TIER_MAINTENANCE_MONTHS * 30)
     days_until_review = (maintenance_deadline - datetime.now()).days
     months_until_review = days_until_review // 30
-    
+
     return {
         "current_tier": current_tier,
         "points_balance": member["points_balance"],
@@ -377,23 +348,14 @@ def get_tier_status(phone_number: str) -> dict:
 
 
 def get_tier_benefits(tier_name: str) -> dict:
-    """
-    Get benefits for a specific tier.
-    
-    Args:
-        tier_name: One of Blue, Silver, Gold, Platinum
-        
-    Returns:
-        List of benefits for that tier
-    """
     tier_name = tier_name.capitalize()
-    
+
     if tier_name not in TIER_CONFIG:
         return {
             "error": f"Unknown tier: {tier_name}",
             "valid_tiers": list(TIER_CONFIG.keys()),
         }
-    
+
     return {
         "tier": tier_name,
         "benefits": TIER_CONFIG[tier_name]["benefits"],
@@ -401,54 +363,38 @@ def get_tier_benefits(tier_name: str) -> dict:
 
 
 def get_tier_requirements() -> dict:
-    """
-    Get all tier thresholds and requirements.
-    
-    Returns complete tier progression info.
-    """
     return {
         "tiers": [
             {
-                "name": name,
-                "min_points": config["min_points"],
-                "next_tier": config["next_tier"],
-                "points_to_next": config["points_to_next"],
+                "name": tier_name,
+                "min_points": tier_data["min_points"],
+                "next_tier": tier_data["next_tier"],
+                "points_to_next": tier_data["points_to_next"],
             }
-            for name, config in TIER_CONFIG.items()
+            for tier_name, tier_data in TIER_CONFIG.items()
         ],
         "maintenance_rule": f"Tiers must be maintained for {TIER_MAINTENANCE_MONTHS} months. If activity drops, tier may be downgraded.",
     }
 
 
 def get_downgrade_info(phone_number: str) -> dict:
-    """
-    Get tier maintenance and potential downgrade info.
-    
-    Returns:
-    - Current tier
-    - Previous tier (what they'd drop to)
-    - Time remaining to maintain
-    - What they need to do to maintain
-    """
-    member = MOCK_MEMBERS.get(phone_number, MOCK_MEMBERS["default"])
+    member = _get_member(phone_number)
     current_tier = member["current_tier"]
     tier_config = TIER_CONFIG[current_tier]
-    
-    # Calculate timeline
+
     tier_achieved = member["tier_achieved_date"]
     maintenance_deadline = tier_achieved + timedelta(days=TIER_MAINTENANCE_MONTHS * 30)
     days_until_review = (maintenance_deadline - datetime.now()).days
     months_until_review = days_until_review // 30
-    
-    # Find previous tier
+
     if tier_config["order"] > 0:
         previous_tier = [
-            name for name, cfg in TIER_CONFIG.items() 
+            name for name, cfg in TIER_CONFIG.items()
             if cfg["order"] == tier_config["order"] - 1
         ][0]
     else:
         previous_tier = None
-    
+
     return {
         "current_tier": current_tier,
         "previous_tier": previous_tier,
@@ -457,93 +403,3 @@ def get_downgrade_info(phone_number: str) -> dict:
         "maintenance_period_months": TIER_MAINTENANCE_MONTHS,
         "advice": "Keep booking to maintain your tier status and earn points towards the next level.",
     }
-
-
-# =============================================================================
-# TOOL DEFINITIONS FOR LIVEKIT AGENT
-# =============================================================================
-
-def get_loyalty_tools_schema() -> list:
-    """
-    Returns tool definitions in the format expected by LiveKit/OpenAI function calling.
-    """
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": "get_member_profile",
-                "description": "Get the member's profile including name, tier, and recent trip info. Use this at the start of the conversation or when you need to know who you're speaking with.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_points_balance",
-                "description": "Get the member's current points balance and points earned from their last trip. Use when they ask about points.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_tier_status",
-                "description": "Get the member's current tier, points needed for next tier, and tier review timeline. Use when they ask about tier status or progression.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_tier_benefits",
-                "description": "Get the benefits for a specific tier (Blue, Silver, Gold, or Platinum). Use when they ask what benefits they have or what a tier includes.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "tier_name": {
-                            "type": "string",
-                            "description": "The tier to look up: Blue, Silver, Gold, or Platinum",
-                            "enum": ["Blue", "Silver", "Gold", "Platinum"],
-                        }
-                    },
-                    "required": ["tier_name"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_downgrade_info",
-                "description": "Get information about tier maintenance and potential downgrade. Use when they ask about keeping their tier or what happens if they don't book.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_tier_requirements",
-                "description": "Get all tier thresholds and progression requirements. Use when they ask how the tier system works or how to move up.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                },
-            },
-        },
-    ]
