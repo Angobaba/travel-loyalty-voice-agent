@@ -53,7 +53,7 @@ async def main():
         # We explicitly tell LiveKit to send the 'outbound-caller' agent to this room.
         # We pass the phone number in the 'metadata' field so the agent knows who to dial.
         dispatch_request = api.CreateAgentDispatchRequest(
-            agent_name="outbound-caller", # Must match agent.py
+            agent_name="loyalty-agent", # Must match agent.py
             room=room_name,
             metadata=json.dumps({"phone_number": phone_number})
         )
