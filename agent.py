@@ -35,7 +35,6 @@ import loyalty_store
 # Environment + logging
 # -----------------------------------------------------------------------------
 
-# Fix for macOS SSL Certificate errors - MUST be before other imports that use SSL
 os.environ["SSL_CERT_FILE"] = certifi.where()
 
 load_dotenv(".env")
@@ -64,7 +63,10 @@ class LoyaltyTools(llm.ToolContext):
     @llm.function_tool(
         description="Get the member's profile including name, tier, points, recent trip, and next review timing."
     )
-    def get_member_profile(self) -> str:
+    async def get_member_profile(
+        self,
+        request: Annotated[str, "Leave empty"] = "",
+    ) -> str:
         logger.info(f"Tool called: get_member_profile for {self._phone_number}")
         data = loyalty_store.get_member_profile(self._phone_number)
 
@@ -78,13 +80,16 @@ class LoyaltyTools(llm.ToolContext):
             f"Member name: {data['name']}. "
             f"Current tier: {data['current_tier']}. "
             f"Points balance: {data['points_balance']}.{trip_text} "
-            f"Tier review in {data['days_until_review']} days."
+            f"Tier review in {data['days_until_tier_review']} days."
         )
 
     @llm.function_tool(
         description="Get the member's current points balance and points earned from the most recent trip."
     )
-    def get_points_balance(self) -> str:
+    async def get_points_balance(
+        self,
+        request: Annotated[str, "Leave empty"] = "",
+    ) -> str:
         logger.info(f"Tool called: get_points_balance for {self._phone_number}")
         data = loyalty_store.get_points_balance(self._phone_number)
 
@@ -96,7 +101,10 @@ class LoyaltyTools(llm.ToolContext):
     @llm.function_tool(
         description="Get the member's current tier and progress to the next tier."
     )
-    def get_tier_status(self) -> str:
+    async def get_tier_status(
+        self,
+        request: Annotated[str, "Leave empty"] = "",
+    ) -> str:
         logger.info(f"Tool called: get_tier_status for {self._phone_number}")
         data = loyalty_store.get_tier_status(self._phone_number)
 
@@ -104,20 +112,20 @@ class LoyaltyTools(llm.ToolContext):
             return (
                 f"Current tier: {data['current_tier']}, which is the highest tier. "
                 f"Points balance: {data['points_balance']}. "
-                f"Tier review in {data['months_until_review']} months."
+                f"Tier review in {data['months_until_tier_review']} months."
             )
 
         return (
             f"Current tier: {data['current_tier']}. "
             f"Points balance: {data['points_balance']}. "
             f"You need {data['points_to_next_tier']} more points to reach {data['next_tier']}. "
-            f"Tier review in {data['months_until_review']} months."
+            f"Tier review in {data['months_until_tier_review']} months."
         )
 
     @llm.function_tool(
         description="Get benefits for a specific tier: Blue, Silver, Gold, or Platinum."
     )
-    def get_tier_benefits(
+    async def get_tier_benefits(
         self,
         tier_name: Annotated[str, "Tier to look up: Blue, Silver, Gold, or Platinum"],
     ) -> str:
@@ -139,7 +147,10 @@ class LoyaltyTools(llm.ToolContext):
     @llm.function_tool(
         description="Get downgrade risk, review timing, and the 12-month tier maintenance rule."
     )
-    def get_downgrade_info(self) -> str:
+    async def get_downgrade_info(
+        self,
+        request: Annotated[str, "Leave empty"] = "",
+    ) -> str:
         logger.info(f"Tool called: get_downgrade_info for {self._phone_number}")
         data = loyalty_store.get_downgrade_info(self._phone_number)
 
@@ -161,7 +172,10 @@ class LoyaltyTools(llm.ToolContext):
     @llm.function_tool(
         description="Explain the tier system, thresholds, and what is required to move up."
     )
-    def get_tier_requirements(self) -> str:
+    async def get_tier_requirements(
+        self,
+        request: Annotated[str, "Leave empty"] = "",
+    ) -> str:
         logger.info("Tool called: get_tier_requirements")
         data = loyalty_store.get_tier_requirements()
 

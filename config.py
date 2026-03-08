@@ -149,7 +149,7 @@ GROQ_TEMPERATURE = 0.4  # Slightly higher for more natural speech
 # =============================================================================
 
 DEFAULT_TRANSFER_NUMBER = os.getenv("DEFAULT_TRANSFER_NUMBER")
-SIP_TRUNK_ID = os.getenv("VOBIZ_SIP_TRUNK_ID")
+SIP_TRUNK_ID = os.getenv("OUTBOUND_TRUNK_ID")
 SIP_DOMAIN = os.getenv("VOBIZ_SIP_DOMAIN")
 
 
